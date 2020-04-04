@@ -29,7 +29,7 @@ async function robot (tasks) {
         }, listSaved);
       }
     }
-    
+
     async function insertIfNotExists(data, list) {
       let saved, id;
 
@@ -78,7 +78,7 @@ async function robot (tasks) {
               const app = express()
       
               const server = app.listen(port, () => {
-                console.log(`> [youtube-robot] Listening on http://localhost:${port}`)
+                console.log(`> [tasks-robot] Listening on http://localhost:${port}`)
       
                 resolve({
                   app,
@@ -106,16 +106,16 @@ async function robot (tasks) {
               scope: ['https://www.googleapis.com/auth/tasks']
             })
       
-            console.log(`> [youtube-robot] Please give your consent: ${consentUrl}`)
+            console.log(`> [tasks-robot] Please give your consent: ${consentUrl}`)
         }
 
         async function waitForGoogleCallback(webServer) {
             return new Promise((resolve, reject) => {
-              console.log('> [youtube-robot] Waiting for user consent...')
+              console.log('> [tasks-robot] Waiting for user consent...')
       
               webServer.app.get('/oauth2callback', (req, res) => {
                 const authCode = req.query.code
-                console.log(`> [youtube-robot] Consent given: ${authCode}`)
+                console.log(`> [tasks-robot] Consent given: ${authCode}`)
       
                 res.send('<h1>Thank you!</h1><p>Now close this tab.</p>')
                 resolve(authCode)
@@ -130,7 +130,7 @@ async function robot (tasks) {
                   return reject(error)
                 }
       
-                console.log('> [youtube-robot] Access tokens received!')
+                console.log('> [tasks-robot] Access tokens received!')
                 OAuthClient.setCredentials(tokens);
                 resolve(tokens)
               })
