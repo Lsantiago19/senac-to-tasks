@@ -8,12 +8,17 @@ async function robot () {
     });
     
     try {
+        console.log(`> [senac-robot] Login senac`);
         const page = await singIn();
+        console.log(`> [senac-robot] Navigate to blackboard`);
         await navigateToBlackboard(page);
+        console.log(`> [senac-robot] Get list graduate`);
         const universityGraduate = await getLinkUniversityGraduate(page);
         const tasks = [];
 
+        let index = 0;
         for (const graduate of universityGraduate) {
+            console.log(`> [senac-robot] [${index+1}/${universityGraduate.length}] Seaching tasks - ${graduate.name}`);
             const tasksGraduate = await searchTasks(page, graduate);
             if (tasksGraduate && tasksGraduate.length > 0) {
                 tasks.push({
@@ -21,6 +26,8 @@ async function robot () {
                     innerTasks: tasksGraduate
                 })
             }
+            console.log(`> [senac-robot] Found ${tasksGraduate.length} tasks`);
+            index++;
         }
 
         return tasks;

@@ -11,14 +11,20 @@ async function robot (tasks) {
     const auth = await authenticateWithOAuth();
     const service = google.tasks({version: 'v1', auth});
 
+    console.log(`> [tasks-robot] Get "SENAC" task list`);
     const list = await getTaskListSenac(service);
     
     const listSaved = await service.tasks.list({
       tasklist: list.id
     });
     
+    console.log(`> [tasks-robot] Saving tasks...`);
     for (const task of tasks) {
-      for (const innerTask of task.innerTasks) {
+      let index = 0;
+      console.log(`> [tasks-robot] ${task.name}`);
+
+      for (const innerTask of task.innerTasks) {  
+        console.log(`> [tasks-robot] [${index+1}/${task.innerTasks.length}] Saving ${innerTask.title}`);
         await insertIfNotExists({
           tasklist: list.id,
           requestBody : {
@@ -27,8 +33,10 @@ async function robot (tasks) {
               due: innerTask.due
           }
         }, listSaved);
+        index++;
       }
     }
+    console.log(`> [tasks-robot] Complete`);
 
     async function insertIfNotExists(data, list) {
       let saved, id;
@@ -60,96 +68,102 @@ async function robot (tasks) {
     }
 
     async function authenticateWithOAuth() {
+      let token;
+      const OAuthClient = await createOAuthClient();
+
+      if (fs.existsSync(TOKEN_PATH)){
+        token = JSON.parse(fs.readFileSync(TOKEN_PATH, 'utf-8'));
+      } else {
         const webServer = await startWebServer();
-        const OAuthClient = await createOAuthClient();
         requestUserConsent(OAuthClient);
         const authorizationToken = await waitForGoogleCallback(webServer);
-        const token = await requestGoogleForAccessTokens(OAuthClient, authorizationToken);
-
-        fs.writeFileSync(TOKEN_PATH, JSON.stringify(token));        
-        await setGlobalGoogleAuthentication(OAuthClient)
+        token = await requestGoogleForAccessTokens(OAuthClient, authorizationToken);
         await stopWebServer(webServer);
+        fs.writeFileSync(TOKEN_PATH, JSON.stringify(token), 'utf-8');
+      }
 
-        return OAuthClient;
+      setGlobalGoogleAuthentication(token);
 
-        async function startWebServer() {
-            return new Promise((resolve, reject) => {
-              const port = 5000
-              const app = express()
-      
-              const server = app.listen(port, () => {
-                console.log(`> [tasks-robot] Listening on http://localhost:${port}`)
-      
-                resolve({
-                  app,
-                  server
-                })
-              });
+      return OAuthClient;
+
+      async function startWebServer() {
+          return new Promise((resolve, reject) => {
+            const port = 5000
+            const app = express()
+    
+            const server = app.listen(port, () => {
+              console.log(`> [tasks-robot] Listening on http://localhost:${port}`)
+    
+              resolve({
+                app,
+                server
+              })
             });
-        }
+          });
+      }
 
-        async function createOAuthClient() {
-            const credentials = require('../credentials/google-tasks.json');
-      
-            const OAuthClient = new OAuth2(
-              credentials.web.client_id,
-              credentials.web.client_secret,
-              credentials.web.redirect_uris[0]
-            );
-      
-            return OAuthClient
-        }
+      async function createOAuthClient() {
+          const credentials = require('../credentials/google-tasks.json');
+    
+          const OAuthClient = new OAuth2(
+            credentials.web.client_id,
+            credentials.web.client_secret,
+            credentials.web.redirect_uris[0]
+          );
+    
+          return OAuthClient
+      }
 
-        function requestUserConsent(OAuthClient) {
-            const consentUrl = OAuthClient.generateAuthUrl({
-              access_type: 'offline',
-              scope: ['https://www.googleapis.com/auth/tasks']
-            })
-      
-            console.log(`> [tasks-robot] Please give your consent: ${consentUrl}`)
-        }
+      function requestUserConsent(OAuthClient) {
+          const consentUrl = OAuthClient.generateAuthUrl({
+            access_type: 'offline',
+            scope: ['https://www.googleapis.com/auth/tasks']
+          })
+    
+          console.log(`> [tasks-robot] Please give your consent: ${consentUrl}`)
+      }
 
-        async function waitForGoogleCallback(webServer) {
-            return new Promise((resolve, reject) => {
-              console.log('> [tasks-robot] Waiting for user consent...')
-      
-              webServer.app.get('/oauth2callback', (req, res) => {
-                const authCode = req.query.code
-                console.log(`> [tasks-robot] Consent given: ${authCode}`)
-      
-                res.send('<h1>Thank you!</h1><p>Now close this tab.</p>')
-                resolve(authCode)
-              })
+      async function waitForGoogleCallback(webServer) {
+          return new Promise((resolve, reject) => {
+            console.log('> [tasks-robot] Waiting for user consent...')
+    
+            webServer.app.get('/oauth2callback', (req, res) => {
+              const authCode = req.query.code
+              console.log(`> [tasks-robot] Consent given: ${authCode}`)
+    
+              res.send('<h1>Thank you!</h1><p>Now close this tab.</p>')
+              resolve(authCode)
             })
-        }
+          })
+      }
 
-        async function requestGoogleForAccessTokens(OAuthClient, authorizationToken) {
-            return new Promise((resolve, reject) => {
-              OAuthClient.getToken(authorizationToken, (error, tokens) => {
-                if (error) {
-                  return reject(error)
-                }
-      
-                console.log('> [tasks-robot] Access tokens received!')
-                OAuthClient.setCredentials(tokens);
-                resolve(tokens)
-              })
+      async function requestGoogleForAccessTokens(OAuthClient, authorizationToken) {
+          return new Promise((resolve, reject) => {
+            OAuthClient.getToken(authorizationToken, (error, tokens) => {
+              if (error) {
+                return reject(error)
+              }
+    
+              console.log('> [tasks-robot] Access tokens received!')
+              resolve(tokens)
             })
-        }
-      
-        function setGlobalGoogleAuthentication(OAuthClient) {
-            google.options({
-              auth: OAuthClient
+          })
+      }
+    
+      function setGlobalGoogleAuthentication(tokens) {
+        OAuthClient.setCredentials(tokens);
+        google.options({
+          auth: OAuthClient
+        })
+      }
+    
+      async function stopWebServer(webServer) {
+          return new Promise((resolve, reject) => {
+            webServer.server.close(() => {
+              resolve()
             })
-        }
-      
-        async function stopWebServer(webServer) {
-            return new Promise((resolve, reject) => {
-              webServer.server.close(() => {
-                resolve()
-              })
-            })
-        }
+          })
+      }
     }
 
 }
