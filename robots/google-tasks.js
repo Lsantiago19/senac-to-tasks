@@ -7,43 +7,45 @@ const OAuth2 = google.auth.OAuth2;
 const fs = require('fs');
 const TOKEN_PATH = path.resolve(__dirname, '..', 'credentials',  'task-user.json');
 
-async function robot (tarefas) {
-    console.log(tarefas);
+async function robot (tasks) {
     const auth = await authenticateWithOAuth();
     const service = google.tasks({version: 'v1', auth});
-    
 
     const list = await getTaskListSenac(service);
-    service.tasks.insert({
-        tasklist: list.id,
-        requestBody : {
-            due: moment(new Date()).toISOString(),
-            title: 'teste1'
-        }
-    })
-
-
-
-    //const tasks = await service.tasks.list({ tasklist: list.id });
-
     
-    // service.tasks.list({
-        
-    // }, (err, res) => {
-    //     if (err){   
-    //         console.log(err);
-    //         return console.error('The API returned an error: ' + err);
-    //     }
-    //     const taskLists = res.data.items;
-    //     if (taskLists) {
-    //       console.log('Task lists:');
-    //       taskLists.forEach((taskList) => {
-    //         console.log(`${taskList.title} (${taskList.id})`);
-    //       });
-    //     } else {
-    //       console.log('No task lists found.');
-    //     }
-    // })
+    const listSaved = await service.tasks.list({
+      tasklist: list.id
+    });
+    
+    for (const task of tasks) {
+      for (const innerTask of task.innerTasks) {
+        await insertIfNotExists({
+          tasklist: list.id,
+          requestBody : {
+              title: innerTask.title,
+              notes: `Matéria - ${task.name}`,
+              due: innerTask.due
+          }
+        }, listSaved);
+      }
+    }
+    
+    async function insertIfNotExists(data, list) {
+      let saved, id;
+
+      if (list.data && list.data.items) {
+        saved = list.data.items.find(m => m.title === data.requestBody.title);
+      }
+
+      if (!saved) {
+        const result = await service.tasks.insert(data);
+        id = result.data.id;
+      } else {
+        id = saved.id;
+      }
+
+      return id;
+    }
 
     async function getTaskListSenac() {
         const listResult = await service.tasklists.list({
